@@ -84,43 +84,32 @@ Roomly/
 ├── package.json # Project config and dependencies
 └── README.md # Project documentation
 
-yaml
-Copy
-Edit
+
 
 ---
 
 ## 🔧 Installation
 
 1. **Clone the repository**
-   ```bash
+ 
    git clone https://github.com/your-username/roomly.git
    cd roomly
 Install dependencies
 
-bash
-Copy
-Edit
+
 npm install
 Start your MongoDB server
 
 If MongoDB is installed locally:
 
-bash
-Copy
-Edit
 mongod
 Run the app
 
-bash
-Copy
-Edit
+
 node app.js
 Open in browser
 
-arduino
-Copy
-Edit
+
 http://localhost:3000
 🏃 Usage
 Navigate to the homepage.
