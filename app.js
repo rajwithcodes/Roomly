@@ -39,7 +39,8 @@ app.use(express.urlencoded({ extended: true }));
 // ✅ HTML form se PUT/DELETE request bhejne ke liye `_method` query parameter ka use
 app.use(methodOverride('_method'));
 app.engine('ejs',ejsMate);
-
+const wrapAsync = require('./utils/wrapAsync.js'); // ✅ wrapAsync utility ko import kar rahe hain
+const ExpressError = require('./utils/expressError.js'); // ✅ ExpressError utility ko import kar rahe hain
 
 // ✅ Root route — just testing whether server is running or not
 app.get('/', (req, res) => {
@@ -52,7 +53,7 @@ app.get('/listings', async (req, res) => {
     // ❌ Galat: 'listings/index.ejs'
     // ✅ Sahi: sirf 'listings/index' likhna hota hai ('.ejs' likhne ki zarurat nahi)
     res.render('listings/index', { allListings });
-});
+}); 
 
 // ✅ Form to create a new listing — new.ejs render karta hai
 app.get('/listings/new', (req, res) => {
@@ -60,41 +61,60 @@ app.get('/listings/new', (req, res) => {
 });
 
 // ✅ Show route — ek specific listing ko ID ke basis pe dikhata hai
-app.get('/listings/:id', async (req, res) => {
+app.get('/listings/:id', wrapAsync(async (req, res) => {
     let { id } = req.params; // URL se id extract kar rahe hain
     const listing = await Listing.findById(id); // Database se listing fetch kar rahe hain
     res.render('listings/show', { listing }); // show.ejs ko bhej rahe hain data ke saath
-});
+}));
 
 // ✅ Create route — form se nayi listing submit karne par yeh trigger hota hai
-app.post('/listings', async (req, res) => {
+app.post('/listings', wrapAsync(async (req, res,next) => {
+    if (!req.body.listing) { // Agar form se data nahi aaya to error throw karte hain
+        throw new ExpressError(400, 'Invalid Listing Data'); // 400 Bad Request error
+    };
     const newListing = new Listing(req.body.listing); // Form data se naya Listing object bana rahe hain
     await newListing.save(); // Database mein save kar diya
     res.redirect('/listings'); // Baad mein listings page pe redirect kar diya
-});
+    
+}));
 
 // ✅ Edit route — ek listing ka edit form dikhata hai
-app.get('/listings/:id/edit', async (req, res) => {
+app.get('/listings/:id/edit', wrapAsync(async (req, res) => {
     const { id } = req.params;
     const listing = await Listing.findById(id);
     res.render('listings/edit', { listing });
-});
+}));
 
 // ✅ Update route — edit form se updated data save karta hai
-app.put('/listings/:id', async (req, res) => {
+app.put('/listings/:id', wrapAsync(async (req, res) => {
+    if (!req.body.listing) { // Agar form se data nahi aaya to error throw karte hain
+        throw new ExpressError(400, 'Invalid Listing Data'); // 400 Bad Request error
+    };
     let { id } = req.params;
     // req.body.listing object mein updated values hoti hain
     await Listing.findByIdAndUpdate(id, { ...req.body.listing });
     res.redirect(`/listings/${id}`); // Update ke baad detail page pe redirect
-});
+}));
 
 // ✅ Delete route — ek listing ko database se hata deta hai
-app.delete('/listings/:id', async (req, res) => {
+app.delete('/listings/:id', wrapAsync(async (req, res) => {
     let { id } = req.params;
     let deletedListing = await Listing.findByIdAndDelete(id); // Listing ko delete kar diya
     console.log(`Listing with ID ${id} deleted:`, deletedListing); // Console mein confirmation
     res.redirect('/listings'); // Saari listings wale page pe redirect
+}));
+app.use((req, res, next) => {
+    next(new ExpressError(404, 'Page Not Found'));
 });
+
+
+app.use((err, req, res, next) => {
+    let { statusCode = 500, message = 'Something went wrong' } = err;
+    res.status(statusCode).render("error.ejs",{err}); // Error page render karte hain
+    // res.status(statusCode).send(message);
+    console.error(err);
+});
+
 
 // ✅ Server start kar diya — ab browser pe http://localhost:3000 pe chalega
 app.listen(port, () => {
