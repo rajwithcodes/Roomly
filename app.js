@@ -1,122 +1,164 @@
-// ✅ Express (web framework) ko import kar rahe hain
+// =======================
+// 📦 Required Modules Import
+// =======================
 const express = require('express');
-// ✅ Mongoose (MongoDB ke saath interact karne ke liye) import kar rahe hain
 const mongoose = require('mongoose');
-// ✅ Apna Listing model import kar rahe hain (path correct hai)
 const Listing = require('./models/listing.js');
-// ✅ Express app initialize
+const Review = require('./models/review.js');
 const app = express();
-// ✅ Node.js ka built-in 'path' module import (path handling ke liye)
 const path = require('path');
-// ✅ method-override middleware import — PUT aur DELETE request ko HTML form se simulate karne ke liye
 const methodOverride = require('method-override');
-// ✅ Port define kar diya — ispe server chalega
-const ejsMate=require('ejs-mate');
+const ejsMate = require('ejs-mate');
 const port = 3000;
-// ✅ MongoDB local connection URL
+const { listingSchema , reviewSchema } = require('./schema.js'); // Joi schema for validation
+// =======================
+// 🌐 MongoDB Connection
+// =======================
 const mongo_URL = 'mongodb://127.0.0.1:27017/Roomly';
-
-// ✅ MongoDB se connect hone wala async function
 async function main() {
     try {
-        await mongoose.connect(mongo_URL); // Database se connection try
-        console.log('✅ Connected to MongoDB'); // Agar connection ho gaya to ye log aayega
+        await mongoose.connect(mongo_URL); 
+        console.log('✅ Connected to MongoDB'); 
     } catch (err) {
-        console.error('❌ Database connection error:', err); // Agar error aaye to usko console mein print karo
+        console.error('❌ Database connection error:', err); 
     }
 }
-main(); // ✅ Function ko call kar diya
-
-
-// ✅ EJS ko templating engine ke roop mein set kar rahe hain
-app.set('view engine', 'ejs');
-// ✅ Views folder ka path set kar rahe hain jahan hamari .ejs files hongi
-app.set('views', path.join(__dirname, 'views'));
-// ✅ Static files (CSS, images, JS) ke liye 'public' folder set kar diya
-app.use(express.static(path.join(__dirname, 'public'))); 
-// ✅ Form se data ko parse karne ke liye middleware (url-encoded data)
-app.use(express.urlencoded({ extended: true }));
-// ✅ HTML form se PUT/DELETE request bhejne ke liye `_method` query parameter ka use
-app.use(methodOverride('_method'));
-app.engine('ejs',ejsMate);
-const wrapAsync = require('./utils/wrapAsync.js'); // ✅ wrapAsync utility ko import kar rahe hain
-const ExpressError = require('./utils/expressError.js'); // ✅ ExpressError utility ko import kar rahe hain
-
-// ✅ Root route — just testing whether server is running or not
+main();
+// =======================
+// ⚙️ App Configuration
+// =======================
+app.set('view engine', 'ejs'); // Set view engine to EJS
+app.set('views', path.join(__dirname, 'views')); // Views folder path
+app.use(express.static(path.join(__dirname, 'public'))); // Serve static files
+app.use(express.urlencoded({ extended: true })); // Parse form data
+app.use(methodOverride('_method')); // For PUT & DELETE in forms
+app.engine('ejs', ejsMate); // Use ejs-mate for layouts
+// =======================
+// 🛠 Utility Imports
+// =======================
+const wrapAsync = require('./utils/wrapAsync.js'); 
+const ExpressError = require('./utils/expressError.js'); 
+// =======================
+// 🏠 Home Route
+// =======================
 app.get('/', (req, res) => {
-    res.render('listings/Home');
+    res.render('listings/Home'); // Render homepage
 });
-
-// ✅ Show all listings page — saari listings database se fetch karke render karega
+// =======================
+// ✅ Middleware: Listing Validation
+// =======================
+const validateListing = (req, res, next) => {
+    let { error } = listingSchema.validate(req.body); 
+    console.log(error); // Log validation error if any
+    if (error) {
+        let errmessage = error.details.map((el) => el.message).join(', '); 
+        throw new ExpressError(400, errmessage); // Throw custom error
+    } else {
+        next(); 
+    }
+};
+const validateReview = (req,res,next)=>{
+    let {error} = reviewSchema.validate(req.body);
+    console.log(error); // Log validation error if any
+    if (error) {
+        let errmessage = error.details.map((el) => el.message).join(', ');
+        throw new ExpressError(400, errmessage); // Throw custom error
+    }else{
+        next();
+    }
+}
+// =======================
+// 📜 Show All Listings
+// =======================
 app.get('/listings', async (req, res) => {
-    const allListings = await Listing.find({});
-    // ❌ Galat: 'listings/index.ejs'
-    // ✅ Sahi: sirf 'listings/index' likhna hota hai ('.ejs' likhne ki zarurat nahi)
-    res.render('listings/index', { allListings });
+    const allListings = await Listing.find({}); // Fetch all listings
+    res.render('listings/index', { allListings }); // Render listings page
 }); 
-
-// ✅ Form to create a new listing — new.ejs render karta hai
+// =======================
+// 🆕 Form for New Listing
+// =======================
 app.get('/listings/new', (req, res) => {
-    res.render('listings/new');
+    res.render('listings/new'); // Render new listing form
 });
-
-// ✅ Show route — ek specific listing ko ID ke basis pe dikhata hai
+// =======================
+// 🔍 Show Single Listing
+// =======================
 app.get('/listings/:id', wrapAsync(async (req, res) => {
-    let { id } = req.params; // URL se id extract kar rahe hain
-    const listing = await Listing.findById(id); // Database se listing fetch kar rahe hain
-    res.render('listings/show', { listing }); // show.ejs ko bhej rahe hain data ke saath
+    let { id } = req.params; 
+    const listing = await Listing.findById(id).populate("reviews"); // Find listing by ID
+    res.render('listings/show', { listing }); // Render single listing page
 }));
-
-// ✅ Create route — form se nayi listing submit karne par yeh trigger hota hai
-app.post('/listings', wrapAsync(async (req, res,next) => {
-    if (!req.body.listing) { // Agar form se data nahi aaya to error throw karte hain
-        throw new ExpressError(400, 'Invalid Listing Data'); // 400 Bad Request error
-    };
-    const newListing = new Listing(req.body.listing); // Form data se naya Listing object bana rahe hain
-    await newListing.save(); // Database mein save kar diya
-    res.redirect('/listings'); // Baad mein listings page pe redirect kar diya
-    
+// =======================
+// ➕ Create New Listing
+// =======================
+app.post('/listings', validateListing, wrapAsync(async (req, res) => {
+    const newListing = new Listing(req.body.listing); // Create new listing
+    await newListing.save(); // Save to DB
+    res.redirect('/listings'); // Redirect to all listings
 }));
-
-// ✅ Edit route — ek listing ka edit form dikhata hai
+// =======================
+// ✏️ Edit Listing Form
+// =======================
 app.get('/listings/:id/edit', wrapAsync(async (req, res) => {
     const { id } = req.params;
-    const listing = await Listing.findById(id);
-    res.render('listings/edit', { listing });
+    const listing = await Listing.findById(id); // Find listing to edit
+    res.render('listings/edit', { listing }); // Render edit form
 }));
-
-// ✅ Update route — edit form se updated data save karta hai
-app.put('/listings/:id', wrapAsync(async (req, res) => {
-    if (!req.body.listing) { // Agar form se data nahi aaya to error throw karte hain
-        throw new ExpressError(400, 'Invalid Listing Data'); // 400 Bad Request error
-    };
+// =======================
+// 🔄 Update Listing
+// =======================
+app.put('/listings/:id', validateListing, wrapAsync(async (req, res) => {
     let { id } = req.params;
-    // req.body.listing object mein updated values hoti hain
-    await Listing.findByIdAndUpdate(id, { ...req.body.listing });
-    res.redirect(`/listings/${id}`); // Update ke baad detail page pe redirect
+    await Listing.findByIdAndUpdate(id, { ...req.body.listing }); // Update listing
+    res.redirect(`/listings/${id}`); // Redirect to updated listing
 }));
-
-// ✅ Delete route — ek listing ko database se hata deta hai
+// =======================
+// ❌ Delete Listing
+// =======================
 app.delete('/listings/:id', wrapAsync(async (req, res) => {
     let { id } = req.params;
-    let deletedListing = await Listing.findByIdAndDelete(id); // Listing ko delete kar diya
-    console.log(`Listing with ID ${id} deleted:`, deletedListing); // Console mein confirmation
-    res.redirect('/listings'); // Saari listings wale page pe redirect
+    let deletedListing = await Listing.findByIdAndDelete(id); // Delete listing
+    console.log(`Listing with ID ${id} deleted:`, deletedListing); 
+    res.redirect('/listings');
 }));
+// =======================
+// 📝 Post a Review for Listing
+// =======================
+app.post('/listings/:id/reviews', validateReview ,wrapAsync(async (req, res) => {
+    let listing = await Listing.findById(req.params.id); // Find listing
+    let newReview = new Review(req.body.review); // Create new review
+    listing.reviews.push(newReview); // Add review to listing
+    await newReview.save(); // Save review
+    await listing.save(); // Save listing with updated reviews
+    res.redirect(`/listings/${listing._id}`); // Redirect to listing detail
+    console.log(`New review added to listing with ID ${listing._id}:`, newReview);
+}));
+// =======================
+// 🗑️ Delete a Review Route
+// =======================
+app.delete('/listings/:id/reviews/:reviewId', wrapAsync(async (req, res) => {
+    let { id, reviewId } = req.params; // Get listing and review IDs
+    await Listing.findByIdAndUpdate(id, { $pull: { reviews: reviewId } }); // Remove review from listing
+    await Review.findByIdAndDelete(reviewId);
+    res.redirect(`/listings/${id}`) 
+    console.log(`Review with ID ${reviewId} deleted from listing with ID ${id}`);
+}))
+// ⚠️ 404 Page Not Found Middleware
+// =======================
 app.use((req, res, next) => {
     next(new ExpressError(404, 'Page Not Found'));
 });
-
-
+// =======================
+// ⚠️ Global Error Handler
+// =======================
 app.use((err, req, res, next) => {
     let { statusCode = 500, message = 'Something went wrong' } = err;
-    res.status(statusCode).render("error.ejs",{err}); // Error page render karte hain
-    // res.status(statusCode).send(message);
+    res.status(statusCode).render("error.ejs", { err }); // Render error page
     console.error(err);
 });
-
-
-// ✅ Server start kar diya — ab browser pe http://localhost:3000 pe chalega
+// =======================
+// 🚀 Start Server
+// =======================
 app.listen(port, () => {
     console.log(`🚀 Server is running on http://localhost:${port}`);
 });
